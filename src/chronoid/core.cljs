@@ -1,13 +1,17 @@
 (ns chronoid.core)
 
 (def default-options
-  {:tolerance-late 0.10
+  {:context (or js/window.AudioContext 
+                js/window.webkitAudioContext)
+   :tolerance-late 0.10
    :tolerance-early 0.001})
 
-(defrecord Clock [context])
+(defrecord Clock [context]
+  Object
+  (foo [_] :bar))
 
 (defn clock
-  ([]        (Clock. (or js/window.AudioContext 
-                         js/window.webkitAudioContext)))
-  ([context] (Clock. context)))
+  [& {:keys [context] :as opts}]
+  (let [{:keys [context]} (merge default-options opts)]
+    (Clock. context)))
 
