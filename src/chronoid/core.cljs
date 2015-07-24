@@ -9,7 +9,14 @@
 
 (defrecord Clock [context events]
   Object
-  (foo [_] :bar))
+  (absolute-time 
+    "Converts from relative -> absolute time."
+    [_ rel-time]
+    (+ rel-time (.-currentTime context)))
+  (set-timeout
+    "Schedules `f` after `delay` milliseconds."
+    [me f delay]
+    (Event. (absolute-time me delay) f)))
 
 (defn clock
   [& {:as opts}]
