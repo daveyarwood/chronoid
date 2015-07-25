@@ -13,6 +13,15 @@
     "Converts from relative -> absolute time."
     [_ rel-time]
     (+ rel-time (.-currentTime context)))
+  (relative-time
+    "Converts from absolute -> relative time."
+    [_ abs-time
+     (- abs-time (.-currentTime context))])
+  (tick
+    "This function is ran periodically, and at each tick it executes
+     events for which `currentTime` is included in their tolerance interval."
+    [_]
+    "TODO")
   (set-timeout
     "Schedules `f` after `delay` milliseconds."
     [me f delay]
@@ -21,5 +30,5 @@
 (defn clock
   [& {:as opts}]
   (let [{:keys [context]} (merge default-options opts)]
-    (Clock. context [])))
+    (Clock. context (atom []))))
 
