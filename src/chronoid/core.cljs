@@ -1,4 +1,5 @@
-(ns chronoid.core)
+(ns chronoid.core
+  (:refer-clojure :exclude [repeat]))
 
 (def ^:dynamic *audio-context*
   (let [ctx (or js/window.AudioContext 
@@ -71,23 +72,38 @@
   (let [event {:action   f
                :clock    clock
                :deadline deadline}] 
-    (swap! clock update :events insert-event event)))
+    (swap! clock update :events insert-event event)
+    event))
 
-(defn execute
+(defn- execute
   "TODO"
   [event])
 
-; TODO: all the Event class functions
+; TODO: all the Event class functions; time-stretch
+
+(defn clear
+  "Unschedules an event by removing it from its clock's event queue."
+  [{:keys [clock] :as event}]
+  (swap! clock update :events filter #(not= % event))
+  event)
+
+(defn repeat
+  "Sets the event to repeat every `time` milliseconds. 
+   
+   `time` must be > 0"
+  [{:keys [clock] :as event} time]
+  {:pre [(pos? time)]}
+  "TODO")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn set-timeout
-  "Schedules `f` after `delay` milliseconds."
+  "Schedules `f` after `delay` milliseconds. Returns the event."
   [clock f delay]
   (create-event clock f (absolute-time clock delay))) 
 
 (defn callback-at-time
-  "Schedules `f` to run before `deadline`."
+  "Schedules `f` to run before `deadline`. Returns the event."
   [clock f deadline]
   (create-event clock f deadline))
 
