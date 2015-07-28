@@ -34,6 +34,19 @@
   [{:keys [context] :as clock} abs-time]
   (- abs-time (.-currentTime context)))
 
+(defn- event*
+  "Constructor for an event. Requires `action`, `clock` (as an atom) and
+   `deadline` at the minimum. 
+   
+   
+   The tolerance interval (:latest-time and :earliest-time) are calculated 
+   based on the deadline and :tolerance-early and :tolerance-late, which are
+   either provided as keyword arguments, or taken from the clock's options."
+  [& {:keys [clock deadline tolerance-early tolerance-late] :as event}]
+  (let [latest   (+ deadline (or tolerance-late  (:tolerance-late @clock)))
+        earliest (- deadline (or tolerance-early (:tolerance-early @clock)))] 
+    (assoc event :latest-time latest :earliest-time earliest)))
+
 (declare execute)
 
 (defn- tick
@@ -67,17 +80,29 @@
     (concat (take i events) [event] (drop i events))))
 
 (defn- create-event
-  "Create an event and insert into a clock's event queue."
-  [clock f deadline]
-  (let [event {:action   f
-               :clock    clock
-               :deadline deadline}] 
+  "Create an event and insert into a clock's event queue.
+   
+   `opts` may contain :tolerance-early and :tolerance-late for optionally
+   overriding the clock's timing window for events."
+  [clock f deadline & {:as opts}]
+  (let [event (event* :action   f
+                      :clock    clock
+                      :deadline deadline)] 
     (swap! clock update :events insert-event event)
     event))
 
+(defn- schedule
+  "Schedule a copy of an event with a new deadline."
+  [{:keys [clock] :as event} new-deadline]
+  (let [new-event (event* (assoc event :deadline new-deadline))]
+    (swap! clock update :events insert-event new-event)))
+
 (defn- execute
-  "TODO"
-  [event])
+  [{:keys [action clock latest-time deadline repeat-time] :as event}]
+  (let [{:keys [context]} @clock]
+    (when (< (.-currentTime context) latest-time)
+      (action))
+    (schedule event (+ deadline repeat-time))))
 
 ; TODO: all the Event class functions; time-stretch
 
@@ -91,9 +116,9 @@
   "Sets the event to repeat every `time` milliseconds. 
    
    `time` must be > 0"
-  [{:keys [clock] :as event} time]
+  [{:keys [clock deadline] :as event} time]
   {:pre [(pos? time)]}
-  "TODO")
+  (schedule (assoc event :repeat-time time) (+ deadline time)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -118,8 +143,8 @@
     (when-not started
       (swap! clock assoc :events [])
       (let [clock-node (doto (.createScriptProcessor context 256 1 1)
-                       (.connect (.-destination context))
-                       (aset "onaudioprocess" #(swap! clock tick)))]
+                         (.connect (.-destination context))
+                         (aset "onaudioprocess" #(swap! clock tick)))]
       (swap! clock assoc :clock-node clock-node :started true)))))
 
 (defn stop!
