@@ -38,14 +38,17 @@
   "Constructor for an event. Requires `action`, `clock` (as an atom) and
    `deadline` at the minimum. 
    
-   
-   The tolerance interval (:latest-time and :earliest-time) are calculated 
+   Assigns a randomly generated id for the event if an :id is not provided to
+   the constructor. This is useful for removing and repeating events.
+
+   The tolerance interval (:latest-time and :earliest-time) is calculated 
    based on the deadline and :tolerance-early and :tolerance-late, which are
    either provided as keyword arguments, or taken from the clock's options."
-  [& {:keys [clock deadline tolerance-early tolerance-late] :as event}]
-  (let [latest   (+ deadline (or tolerance-late  (:tolerance-late @clock)))
+  [{:keys [id clock deadline tolerance-early tolerance-late] :as event}]
+  (let [id       (or id (gensym 'event))
+        latest   (+ deadline (or tolerance-late  (:tolerance-late @clock)))
         earliest (- deadline (or tolerance-early (:tolerance-early @clock)))] 
-    (assoc event :latest-time latest :earliest-time earliest)))
+    (assoc event :id id :latest-time latest :earliest-time earliest)))
 
 (declare execute)
 
@@ -80,14 +83,12 @@
     (concat (take i events) [event] (drop i events))))
 
 (defn- create-event
-  "Create an event and insert into a clock's event queue.
-   
-   `opts` may contain :tolerance-early and :tolerance-late for optionally
-   overriding the clock's timing window for events."
+  "Create an event and insert into a clock's event queue."
   [clock f deadline & {:as opts}]
-  (let [event (event* :action   f
-                      :clock    clock
-                      :deadline deadline)] 
+  (let [event (event* (merge {:action   f 
+                              :clock    clock 
+                              :deadline deadline}
+                             opts))] 
     (swap! clock update :events insert-event event)
     event))
 
@@ -109,13 +110,12 @@
 (defn clear
   "Unschedules an event by removing it from its clock's event queue."
   [{:keys [clock] :as event}]
-  (swap! clock update :events filter #(not= % event))
+  (swap! clock update :events filter (fn [{:keys [id]}] 
+                                       (not= id (:id event))))
   event)
 
 (defn repeat
-  "Sets the event to repeat every `time` milliseconds. 
-   
-   `time` must be > 0"
+  "Sets the event to repeat every `time` milliseconds "
   [{:keys [clock deadline] :as event} time]
   {:pre [(pos? time)]}
   (schedule (assoc event :repeat-time time) (+ deadline time)))
@@ -123,17 +123,25 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn set-timeout
-  "Schedules `f` after `delay` milliseconds. Returns the event."
-  [clock f delay]
-  (create-event clock f (absolute-time clock delay))) 
+  "Schedules `f` after `delay` milliseconds. Returns the event.
+   
+   `opts` may contain :tolerance-early and :tolerance-late for optionally
+   overriding the clock's timing window for events."
+  [clock f delay & {:as opts}]
+  (create-event clock f (absolute-time clock delay) opts)) 
 
 (defn callback-at-time
-  "Schedules `f` to run before `deadline`. Returns the event."
-  [clock f deadline]
-  (create-event clock f deadline))
+  "Schedules `f` to run before `deadline`. Returns the event.
+   
+   `opts` may contain :tolerance-early and :tolerance-late for optionally
+   overriding the clock's timing window for events."
+  [clock f deadline & {:as opts}]
+  (create-event clock f deadline opts))
 
 (defn time-stretch
-  [?]
+  [{:keys [repeat-time deadline earliest-time clock] :as event} 
+   time-reference 
+   ratio]
   "TODO")
 
 (defn start!
