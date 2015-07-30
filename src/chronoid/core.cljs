@@ -1,15 +1,24 @@
-(ns chronoid.core
-  (:refer-clojure :exclude [repeat]))
+(ns chronoid.core)
+
+; TODO:
+; - resolve the scheduling/state conflicts between the `tick` function (which,
+;   every ~5 ms, updates the clock events by removing any ones that are past
+;   their deadline) and the `schedule!` function (which, when called by the
+;   `execute!` function to schedule repeat events, inserts a new event into the
+;   event queue). We don't have STM in ClojureScript, so I think what we need
+;   here is something to coordinate the state of the event queue. Maybe a 
+;   separate "new events queue" that the `tick` function can read from, and 
+;   make sure that the new events actually get added.
 
 (def ^:dynamic *audio-context*
   (let [ctx (or js/window.AudioContext 
-                          js/window.webkitAudioContext)]
-              (ctx.)))
+                js/window.webkitAudioContext)]
+    (ctx.)))
 
 (def default-options
   {:context *audio-context*
-   :tolerance-late 0.10
-   :tolerance-early 0.001})
+   :tolerance-late  100 ; ms
+   :tolerance-early 1}) ; ms
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -24,15 +33,28 @@
                {:events  []
                 :started false})))
 
+(defn- current-time*
+  "Internal implementation for the public function current-time, which works
+   on atom-wrapped clocks. 
+   
+   This internal version works on non-atom-wrapped clocks."
+  [{:keys [context] :as clock}]
+  (* 1000 (.-currentTime context)))
+
+(defn current-time
+  "Returns the current time of a clock's audio context, in milliseconds."
+  [clock]
+  (current-time* @clock))
+
 (defn- absolute-time 
   "Converts from relative -> absolute time."
-  [{:keys [context] :as clock} rel-time]
-  (+ rel-time (.-currentTime context)))
+  [clock rel-time]
+  (+ rel-time (current-time* clock)))
 
 (defn- relative-time
   "Converts from absolute -> relative time."
-  [{:keys [context] :as clock} abs-time]
-  (- abs-time (.-currentTime context)))
+  [clock abs-time]
+  (- abs-time (current-time* clock)))
 
 (defn- event*
   "Constructor for an event. Requires `action`, `clock` (as an atom) and
@@ -50,16 +72,25 @@
         earliest (- deadline (or tolerance-early (:tolerance-early @clock)))] 
     (assoc event :id id :latest-time latest :earliest-time earliest)))
 
-(declare execute)
+(declare execute!)
 
 (defn- tick
   "This function is ran periodically, and at each tick it executes
    events for which `currentTime` is included in their tolerance interval."
-  [{:keys [context events] :as clock}]
-  (let [execute-now? #(<= (:earliest-time %) (.-currentTime context))] 
+  [{:keys [events] :as clock}]
+  (let [execute-now?    #(<= (:earliest-time %) (current-time* clock))
+        ; there needs to be a tiny window of time after an event executes
+        ; that it stays in the events queue... otherwise, it somehow gets taken
+        ; out of the events queue before it can execute ¯\_(ツ)_/¯
+        ready-to-clear? #(>= (- (current-time* clock) (:earliest-time %)) 5)]
     (doseq [event (take-while execute-now? events)]
-      (execute event))
-    (update clock :events drop-while execute-now?)))
+      (execute! event))
+    (doseq [event (filter ready-to-clear? events)]
+      (js/console.log (str "clearing event, "
+                           (:earliest-time event)
+                           " < "
+                           (current-time* clock))))
+    (update clock :events #(drop-while ready-to-clear? %))))
 
 (defn- index-by-time 
   "Does a binary search to find the index of the first event whose deadline is
@@ -82,7 +113,7 @@
   (let [i (index-by-time events earliest-time)]
     (concat (take i events) [event] (drop i events))))
 
-(defn- create-event
+(defn- create-event!
   "Create an event and insert into a clock's event queue."
   [clock f deadline & {:as opts}]
   (let [event (event* (merge {:action   f 
@@ -92,57 +123,85 @@
     (swap! clock update :events insert-event event)
     event))
 
-(defn- schedule
+(defn- schedule!
   "Schedule a copy of an event with a new deadline."
   [{:keys [clock] :as event} new-deadline]
   (let [new-event (event* (assoc event :deadline new-deadline))]
     (swap! clock update :events insert-event new-event)))
 
-(defn- execute
+(defn- execute!
   [{:keys [action clock latest-time deadline repeat-time] :as event}]
-  (let [{:keys [context]} @clock]
-    (when (< (.-currentTime context) latest-time)
-      (action))
-    (schedule event (+ deadline repeat-time))))
+  (when (< (current-time clock) latest-time)
+    (action))
+  (when repeat-time
+    (schedule! event (+ deadline repeat-time))))
 
-; TODO: all the Event class functions; time-stretch
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn clear
+(defn set-timeout!
+  "Schedules `f` after `delay` milliseconds. Returns the event.
+   
+   `opts` may contain :tolerance-early and :tolerance-late for optionally
+   overriding the clock's timing window for events."
+  [clock f delay & {:as opts}]
+  (create-event! clock f (absolute-time @clock delay) opts)) 
+
+(defn callback-at-time!
+  "Schedules `f` to run before `deadline`. Returns the event.
+   
+   `opts` may contain :tolerance-early and :tolerance-late for optionally
+   overriding the clock's timing window for events."
+  [clock f deadline & {:as opts}]
+  (create-event! clock f deadline opts))
+
+(defn clear!
   "Unschedules an event by removing it from its clock's event queue."
   [{:keys [clock] :as event}]
   (swap! clock update :events filter (fn [{:keys [id]}] 
                                        (not= id (:id event))))
   event)
 
-(defn repeat
+(defn repeat!
   "Sets the event to repeat every `time` milliseconds "
   [{:keys [clock deadline] :as event} time]
   {:pre [(pos? time)]}
-  (schedule (assoc event :repeat-time time) (+ deadline time)))
+  (schedule! (assoc event :repeat-time time) (+ deadline time)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn set-timeout
-  "Schedules `f` after `delay` milliseconds. Returns the event.
+(defn- time-stretch!*
+  "Internal implementation for time-stretching a single event.
    
-   `opts` may contain :tolerance-early and :tolerance-late for optionally
-   overriding the clock's timing window for events."
-  [clock f delay & {:as opts}]
-  (create-event clock f (absolute-time clock delay) opts)) 
-
-(defn callback-at-time
-  "Schedules `f` to run before `deadline`. Returns the event.
-   
-   `opts` may contain :tolerance-early and :tolerance-late for optionally
-   overriding the clock's timing window for events."
-  [clock f deadline & {:as opts}]
-  (create-event clock f deadline opts))
-
-(defn time-stretch
+   The public function below this one can handle a single event or multiple
+   events."
   [{:keys [repeat-time deadline earliest-time clock] :as event} 
    time-reference 
    ratio]
-  "TODO")
+  (clear! event)
+  (let [deadline    (+ time-reference (* ratio (- deadline time-reference)))
+        repeat-time (when repeat-time (* repeat-time ratio))
+        repeats     (when repeat-time
+                      (iterate (partial + repeat-time) deadline))]
+    (schedule! (assoc event 
+                :deadline (if repeats
+                            (first (drop-while #(>= (current-time clock)
+                                                    (- % earliest-time))
+                                               repeats))
+                            deadline)
+                :repeat-time repeat-time)
+               deadline)))
+
+(defn time-stretch!
+  "Reschedules events according to a `time-reference` and a `ratio`.
+
+   The first argument can be either a single event or a list of events.
+   
+   e.g.
+   (time-stretch! e (current-time clock) 0.5)
+   
+   ^-- makes an event `e` occur twice as soon as it would otherwise"
+  [e time-reference ratio]
+  (if (coll? e)
+    (doseq [event e] (time-stretch!* event time-reference ratio))
+    (time-stretch!* e time-reference ratio)))
 
 (defn start!
   "Remove all scheduled events and start the clock."
@@ -153,7 +212,7 @@
       (let [clock-node (doto (.createScriptProcessor context 256 1 1)
                          (.connect (.-destination context))
                          (aset "onaudioprocess" #(swap! clock tick)))]
-      (swap! clock assoc :clock-node clock-node :started true)))))
+        (swap! clock assoc :clock-node clock-node :started true)))))
 
 (defn stop!
   "Stops the clock."
