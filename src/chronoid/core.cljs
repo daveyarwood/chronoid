@@ -72,25 +72,22 @@
         earliest (- deadline (or tolerance-early (:tolerance-early @clock)))] 
     (assoc event :id id :latest-time latest :earliest-time earliest)))
 
-(declare execute!)
+(declare execute! schedule*)
 
 (defn- tick
   "This function is ran periodically, and at each tick it executes
    events for which `currentTime` is included in their tolerance interval."
   [{:keys [events] :as clock}]
-  (let [execute-now?    #(<= (:earliest-time %) (current-time* clock))
-        ; there needs to be a tiny window of time after an event executes
-        ; that it stays in the events queue... otherwise, it somehow gets taken
-        ; out of the events queue before it can execute ¯\_(ツ)_/¯
-        ready-to-clear? #(>= (- (current-time* clock) (:earliest-time %)) 5)]
-    (doseq [event (take-while execute-now? events)]
-      (execute! event))
-    (doseq [event (filter ready-to-clear? events)]
-      (js/console.log (str "clearing event, "
-                           (:earliest-time event)
-                           " < "
-                           (current-time* clock))))
-    (update clock :events #(drop-while ready-to-clear? %))))
+  (let [current-time (current-time* clock)
+        [now later] (split-with #(<= (:earliest-time %) current-time) events)]
+    (doseq [event now] (execute! event))
+    (assoc clock :events 
+                 (reduce (fn [events {:keys [deadline repeat-time] :as event}]
+                           (if repeat-time
+                             (schedule* events event (+ deadline repeat-time))
+                             events))
+                         later 
+                         now))))
 
 (defn- index-by-time 
   "Does a binary search to find the index of the first event whose deadline is
@@ -123,18 +120,21 @@
     (swap! clock update :events insert-event event)
     event))
 
+(defn- schedule*
+  "Insert a copy of an event into an event queue with a new deadline."
+  [events event new-deadline]
+  (let [new-event (event* (assoc event :deadline new-deadline))]
+    (insert-event events new-event)))
+
 (defn- schedule!
   "Schedule a copy of an event with a new deadline."
   [{:keys [clock] :as event} new-deadline]
-  (let [new-event (event* (assoc event :deadline new-deadline))]
-    (swap! clock update :events insert-event new-event)))
+  (swap! clock update :events schedule* event new-deadline))
 
 (defn- execute!
   [{:keys [action clock latest-time deadline repeat-time] :as event}]
   (when (< (current-time clock) latest-time)
-    (action))
-  (when repeat-time
-    (schedule! event (+ deadline repeat-time))))
+    (action)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
