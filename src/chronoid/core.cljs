@@ -1,14 +1,15 @@
 (ns chronoid.core)
 
-; TODO:
-; - resolve the scheduling/state conflicts between the `tick` function (which,
-;   every ~5 ms, updates the clock events by removing any ones that are past
-;   their deadline) and the `schedule!` function (which, when called by the
-;   `execute!` function to schedule repeat events, inserts a new event into the
-;   event queue). We don't have STM in ClojureScript, so I think what we need
-;   here is something to coordinate the state of the event queue. Maybe a 
-;   separate "new events queue" that the `tick` function can read from, and 
-;   make sure that the new events actually get added.
+; TODO: better coordination of state to avoid race conditions...
+; the swap! operation caused by the tick function seems to be overwriting the
+; state of the event queue after any changes enacted by executing events...
+
+; I think the problem might actually be (swap! clock tick) -- maybe it can't
+; handle there being inner swaps, and the outer swap (i.e. tick) is taking 
+; precedence. Should try dividing it up into two stages, `execute-events` and
+; `update-event-queue`, and do them one after the other where we are currently
+; doing (swap! clock tick). Should maybe pull out the now/later partitioning
+; from the `tick` function and pass the results to each function, respectively.
 
 (def ^:dynamic *audio-context*
   (let [ctx (or js/window.AudioContext 
@@ -157,8 +158,9 @@
 (defn clear!
   "Unschedules an event by removing it from its clock's event queue."
   [{:keys [clock] :as event}]
-  (swap! clock update :events filter (fn [{:keys [id]}] 
-                                       (not= id (:id event))))
+  (swap! clock update :events #(filter (fn [{:keys [id]}] 
+                                         (not= id (:id event)))
+                                       %))
   event)
 
 (defn repeat!
