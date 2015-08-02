@@ -1,16 +1,5 @@
 (ns chronoid.core)
 
-; TODO: better coordination of state to avoid race conditions...
-; the swap! operation caused by the tick function seems to be overwriting the
-; state of the event queue after any changes enacted by executing events...
-
-; I think the problem might actually be (swap! clock tick) -- maybe it can't
-; handle there being inner swaps, and the outer swap (i.e. tick) is taking 
-; precedence. Should try dividing it up into two stages, `execute-events` and
-; `update-event-queue`, and do them one after the other where we are currently
-; doing (swap! clock tick). Should maybe pull out the now/later partitioning
-; from the `tick` function and pass the results to each function, respectively.
-
 (def ^:dynamic *audio-context*
   (let [ctx (or js/window.AudioContext 
                 js/window.webkitAudioContext)]
@@ -75,20 +64,17 @@
 
 (declare execute! schedule*)
 
-(defn- tick
+(defn- tick!
   "This function is ran periodically, and at each tick it executes
    events for which `currentTime` is included in their tolerance interval."
-  [{:keys [events] :as clock}]
-  (let [current-time (current-time* clock)
-        [now later] (split-with #(<= (:earliest-time %) current-time) events)]
+  [clock]
+  (let [{:keys [events]} @clock
+        current-time (current-time clock)
+        execute-now? #(<= (:earliest-time %) current-time)
+        now (take-while execute-now? events)]
     (doseq [event now] (execute! event))
-    (assoc clock :events 
-                 (reduce (fn [events {:keys [deadline repeat-time] :as event}]
-                           (if repeat-time
-                             (schedule* events event (+ deadline repeat-time))
-                             events))
-                         later 
-                         now))))
+    (swap! clock assoc :events (drop-while execute-now? (:events @clock))
+                       :current-time current-time)))
 
 (defn- index-by-time 
   "Does a binary search to find the index of the first event whose deadline is
@@ -130,12 +116,17 @@
 (defn- schedule!
   "Schedule a copy of an event with a new deadline."
   [{:keys [clock] :as event} new-deadline]
-  (swap! clock update :events schedule* event new-deadline))
+  (swap! clock update :events schedule* event new-deadline)
+  (event* (assoc event :deadline new-deadline)))
+
+(declare repeat!)
 
 (defn- execute!
   [{:keys [action clock latest-time deadline repeat-time] :as event}]
   (when (< (current-time clock) latest-time)
-    (action)))
+    (action))
+  (when repeat-time
+    (repeat! event repeat-time)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -170,26 +161,21 @@
   (schedule! (assoc event :repeat-time time) (+ deadline time)))
 
 (defn- time-stretch!*
-  "Internal implementation for time-stretching a single event.
-   
-   The public function below this one can handle a single event or multiple
-   events."
-  [{:keys [repeat-time deadline earliest-time clock] :as event} 
+  "Internal implementation for time-stretching a single event."
+  [{:keys [repeat-time clock deadline earliest-time] :as event} 
    time-reference 
    ratio]
-  (clear! event)
   (let [deadline    (+ time-reference (* ratio (- deadline time-reference)))
         repeat-time (when repeat-time (* repeat-time ratio))
         repeats     (when repeat-time
                       (iterate (partial + repeat-time) deadline))]
-    (schedule! (assoc event 
-                :deadline (if repeats
-                            (first (drop-while #(>= (current-time clock)
-                                                    (- % earliest-time))
-                                               repeats))
-                            deadline)
-                :repeat-time repeat-time)
-               deadline)))
+    (clear! event)
+    (schedule! (assoc event :repeat-time repeat-time)
+               (if repeats
+                 (first (drop-while #(>= (current-time clock)
+                                         %)
+                                    repeats))
+                 deadline))))
 
 (defn time-stretch!
   "Reschedules events according to a `time-reference` and a `ratio`.
@@ -198,12 +184,17 @@
    
    e.g.
    (time-stretch! e (current-time clock) 0.5)
+   ^-- makes an event `e` occur twice as soon as it would otherwise
    
-   ^-- makes an event `e` occur twice as soon as it would otherwise"
-  [e time-reference ratio]
-  (if (coll? e)
-    (doseq [event e] (time-stretch!* event time-reference ratio))
-    (time-stretch!* e time-reference ratio)))
+   If `time-reference` is omitted, the default value is the current time of the
+   event's clock."
+  ([e ratio]
+    (let [{:keys [clock]} (if (sequential? e) (first e) e)] 
+      (time-stretch! e (current-time clock) ratio)))
+  ([e time-reference ratio]
+    (if (sequential? e)
+      (doseq [event e] (time-stretch!* event time-reference ratio))
+      (time-stretch!* e time-reference ratio))))
 
 (defn start!
   "Remove all scheduled events and start the clock."
@@ -213,7 +204,7 @@
       (swap! clock assoc :events [])
       (let [clock-node (doto (.createScriptProcessor context 256 1 1)
                          (.connect (.-destination context))
-                         (aset "onaudioprocess" #(swap! clock tick)))]
+                         (aset "onaudioprocess" #(tick! clock)))]
         (swap! clock assoc :clock-node clock-node :started true)))))
 
 (defn stop!
