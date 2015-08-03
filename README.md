@@ -10,7 +10,68 @@ Chronoid is essentially a port of [WAAClock](https://github.com/sebpiq/WAAClock)
 
 ## Usage
 
-*TODO*
+```clojure
+(require '[chronoid.core :as c])
+
+(def clock (c/clock))
+(c/start! clock)
+```
+
+(These examples are loosely translated from the examples in the WAAClock README.)
+
+### Schedule custom events
+
+```clojure
+; prints "wow!" at time marking 13000 (13 seconds from when the clock started)
+(c/callback-at-time! clock #(js/console.log "wow!") 13000)
+
+; prints "wow!" 13 seconds from now
+(c/set-timeout! clock #(js/console.log "wow!") 13000)
+```
+
+### Set events to repeat periodically
+
+```clojure
+(-> (c/callback-at-time! clock #(js/console.log "wow!") 3000)
+    (c/repeat! 2000))
+```
+
+### Cancel an event
+
+For the following examples, we'll use [mantra](http://github.com/daveyarwood/mantra) to make some bleeps and bloops with a sine-wave oscillator.
+
+```clojure
+(require '[mantra.core :as m])
+
+(def sine (m/osc :type :sine))
+
+(defn bleep! []
+  (m/play-note sine {:pitch 440 :duration 250}))
+
+(defn bloop! []
+  (m/play-note sine {:pitch 220 :duration 250}))
+
+; gimme a bleep in 13 seconds
+(def bleep (c/set-timeout! clock bleep! 13000))
+
+; just kidding, cancel that
+(c/clear! bleep)
+```
+
+### Change the tempo of one or more events
+
+```clojure
+(def bleep 
+  (-> (c/callback-at-time! clock bleep! 1000) 
+      (c/repeat! 2000)))
+
+(def bloop
+  (-> (c/callback-at-time! clock bloop! 1000) 
+      (c/repeat! 2000)))
+
+; in 10 seconds, multiply the tempo by 2
+(c/set-timeout! clock #(c/time-stretch! [bleep bloop] 0.5) 10000)
+```
 
 ## License
 

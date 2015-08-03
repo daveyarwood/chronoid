@@ -179,8 +179,11 @@
 
 (defn time-stretch!
   "Reschedules events according to a `time-reference` and a `ratio`.
+   If the event is a repeating event, adjusts its repeat-time accordingly.
 
    The first argument can be either a single event or a list of events.
+   Returns the rescheduled event, or a list of rescheduled events, depending
+   on the input type.
    
    e.g.
    (time-stretch! e (current-time clock) 0.5)
@@ -193,7 +196,7 @@
       (time-stretch! e (current-time clock) ratio)))
   ([e time-reference ratio]
     (if (sequential? e)
-      (doseq [event e] (time-stretch!* event time-reference ratio))
+      (doall (map #(time-stretch!* % time-reference ratio) e))
       (time-stretch!* e time-reference ratio))))
 
 (defn start!
@@ -205,7 +208,8 @@
       (let [clock-node (doto (.createScriptProcessor context 256 1 1)
                          (.connect (.-destination context))
                          (aset "onaudioprocess" #(tick! clock)))]
-        (swap! clock assoc :clock-node clock-node :started true)))))
+        (swap! clock assoc :clock-node clock-node :started true)
+        clock))))
 
 (defn stop!
   "Stops the clock."
@@ -213,4 +217,5 @@
   (let [{:keys [started clock-node]} @clock]
     (when started
       (.disconnect clock-node)
-      (swap! clock assoc :started false :clock-node nil))))
+      (swap! clock assoc :started false :clock-node nil)
+      clock)))
