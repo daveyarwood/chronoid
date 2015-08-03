@@ -1,5 +1,7 @@
 # chronoid
 
+[![Clojars Project](http://clojars.org/chronoid/latest-version.svg)](http://clojars.org/chronoid)
+
 Sometimes you want to schedule events in the browser with a great degree of precision. This is especially relevant for web audio applications. Unfortunately, the JavaScript clock is not very precise. It is only precise down to the millisecond (which sounds precise, but for audio applications, doesn't quite cut it), 
 and, the truly bad part, the callback of timer events in JavaScript through `setTimeout` or `setInterval` can easily be skewed by ten milliseconds
 or more by any number of things happening on the main execution thread, including layout, rendering, garbage collection and XHR.
