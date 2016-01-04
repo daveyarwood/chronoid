@@ -68,7 +68,7 @@ For the following examples, we'll use [mantra](http://github.com/daveyarwood/man
       (c/repeat! 2000)))
 
 (def bloop
-  (-> (c/callback-at-time! clock bloop! 1000)
+  (-> (c/callback-at-time! clock bloop! 2000)
       (c/repeat! 2000)))
 
 ; in 10 seconds, multiply the tempo by 2
