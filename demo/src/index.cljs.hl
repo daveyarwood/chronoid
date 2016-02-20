@@ -1,0 +1,60 @@
+(page "index.html"
+  (:require [mantra.core :as m]
+            [chronoid.core :as c]))
+
+(def clock (c/clock))
+
+(defc current-tempo 60)
+(defc repeat-time 1000)
+
+(def sine (m/osc :type :sine))
+
+(defn blip [freq]
+  (m/play-note sine {:pitch freq :duration 250 :volume 0.25}))
+
+(defn bleep* []
+  (-> (c/callback-at-time! clock #(blip 440) 1000)
+      (c/repeat! @repeat-time)))
+
+(defn bloop* []
+  (-> (c/callback-at-time! clock #(blip 220) (+ 1000 (/ @repeat-time 2)))
+      (c/repeat! @repeat-time)))
+
+(defc bleep (bleep*))
+(defc bloop (bloop*))
+
+(defn start! []
+  (c/start! clock)
+  (reset! bleep (bleep*))
+  (reset! bloop (bloop*)))
+
+(defn stop! []
+  (c/stop! clock))
+
+(defn quarter-note
+  "Returns the duration of a quarter note, in ms, at a given tempo."
+  [bpm]
+  (* 1000 (/ bpm 60)))
+
+(do-watch current-tempo 60
+  (fn [old-tempo new-tempo]
+    (reset! repeat-time (quarter-note new-tempo))
+    (c/time-stretch! [@bleep @bloop] (/ old-tempo new-tempo))))
+
+(defelem slider [attr _]
+  (input
+    (assoc attr :type "range")))
+
+(html
+  (head
+    (title "chronoid ~ tempo change demo"))
+  (body
+    (p
+     (button :click start! "start")
+     (button :click stop! "stop"))
+    (p
+      (slider :id "tempo-slider"
+              :min 20 :max 500 :step 0.1 :value @current-tempo
+              :change #(reset! current-tempo @%)))
+    (p
+      (text "current tempo: ~{current-tempo}"))))
