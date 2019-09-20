@@ -22,7 +22,7 @@
 (bootlaces! +version+)
 
 (task-options!
-  pom {:project 'chronoid
+  pom {:project 'io.djy/chronoid
        :version +version+
        :description "A ClojureScript library for rock-solid scheduling of events."
        :url "https://github.com/daveyarwood/chronoid"
