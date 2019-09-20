@@ -6,7 +6,10 @@
 
 (def ^:dynamic *clocks* {})
 
-(def audio-context (atom nil))
+(def audio-context
+  "An atomic reference to a global audio context that gets created the first
+   time you call `clock` and is reused for any subsequent clocks."
+  (atom nil))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
