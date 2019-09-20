@@ -11,6 +11,11 @@
    time you call `clock` and is reused for any subsequent clocks."
   (atom nil))
 
+(defn new-audio-context
+  []
+  (let [Context (or js/window.AudioContext js/window.webkitAudioContext)]
+    (Context.)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;; For all of the public functions, the `clock` arguments are atom references to
@@ -20,20 +25,6 @@
 
 (defn clock
   [& {:as attrs}]
-  (let [ctx (if @audio-context @audio-context
-              (let [ct (or js/window.AudioContext js/window.webkitAudioContext)
-                    inst (ct.)]
-                (reset! audio-context inst)))
-        id           (gensym "clock")
-        clock        (merge default-options
-                            attrs
-                            {:context ctx
-                             :id      id
-                             :events  []
-                             :started false})
-        atomic-clock (atom clock)]
-    (set! *clocks* (assoc *clocks* id atomic-clock))
-    atomic-clock))
 
 (defn- current-time*
   "Internal implementation for the public function current-time, which works
@@ -42,6 +33,17 @@
    This internal version works on non-atom-wrapped clocks."
   [{:keys [context] :as clock}]
   (* 1000 (.-currentTime context)))
+  (let [ctx        (swap! audio-context #(or % (new-audio-context)))
+        id         (gensym "clock")
+        clock      (merge default-options
+                          attrs
+                          {:context ctx
+                           :id      id
+                           :events  []
+                           :started false})
+        clock-atom (atom clock)]
+    (set! *clocks* (assoc *clocks* id clock-atom))
+    clock-atom))
 
 (defn current-time
   "Returns the current time of a clock's audio context, in milliseconds."
