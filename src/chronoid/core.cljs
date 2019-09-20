@@ -13,9 +13,10 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; For all of the public functions, the `clock` arguments are atom references to
-; maps representing clocks. The `clock` function returns such a clock atom,
-; providing a convenient abstraction so that callers need not worry about atoms.
+;; For all of the public functions, the `clock` arguments are atom references to
+;; maps representing clocks. The `clock` function returns such a clock atom,
+;; providing a convenient abstraction so that callers need not worry about
+;; atoms.
 
 (defn clock
   [& {:as attrs}]

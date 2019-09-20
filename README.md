@@ -24,10 +24,10 @@ Chronoid is essentially a port of [WAAClock](https://github.com/sebpiq/WAAClock)
 ### Schedule custom events
 
 ```clojure
-; prints "wow!" at time marking 13000 (13 seconds from when the clock started)
+;; prints "wow!" at time marking 13000 (13 seconds from when the clock started)
 (c/callback-at-time! clock #(js/console.log "wow!") 13000)
 
-; prints "wow!" 13 seconds from now
+;; prints "wow!" 13 seconds from now
 (c/set-timeout! clock #(js/console.log "wow!") 13000)
 ```
 
@@ -53,10 +53,10 @@ For the following examples, we'll use [mantra](http://github.com/daveyarwood/man
 (defn bloop! []
   (m/play-note sine {:pitch 220 :duration 250}))
 
-; gimme a bleep in 13 seconds
+;; gimme a bleep in 13 seconds
 (def bleep (c/set-timeout! clock bleep! 13000))
 
-; just kidding, cancel that
+;; just kidding, cancel that
 (c/clear! bleep)
 ```
 
@@ -71,7 +71,7 @@ For the following examples, we'll use [mantra](http://github.com/daveyarwood/man
   (-> (c/callback-at-time! clock bloop! 2000)
       (c/repeat! 2000)))
 
-; in 10 seconds, multiply the tempo by 2
+;; in 10 seconds, multiply the tempo by 2
 (c/set-timeout! clock #(c/time-stretch! [bleep bloop] 0.5) 10000)
 ```
 
