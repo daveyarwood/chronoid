@@ -69,15 +69,15 @@
    based on the deadline and :tolerance-early and :tolerance-late, which are
    either provided as keyword arguments, or taken from the clock's options."
   [{:keys [id clock-id clock deadline tolerance-early tolerance-late] :as event}]
-  (let [clock    (if clock-id
-                   (get *clocks* clock-id)
-                   clock)
+  (let [clock    @(if clock-id
+                    (get *clocks* clock-id)
+                    clock)
         id       (or id (gensym 'event))
-        latest   (+ deadline (or tolerance-late  (:tolerance-late @clock)))
-        earliest (- deadline (or tolerance-early (:tolerance-early @clock)))]
+        latest   (+ deadline (or tolerance-late  (:tolerance-late clock)))
+        earliest (- deadline (or tolerance-early (:tolerance-early clock)))]
     (-> event
         (assoc :id id
-               :clock-id (:id @clock)
+               :clock-id (:id clock)
                :latest-time latest
                :earliest-time earliest)
         (dissoc :clock))))
