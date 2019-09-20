@@ -77,7 +77,7 @@ For the following examples, we'll use [mantra](http://github.com/daveyarwood/man
 
 ## License
 
-Copyright © 2015-2016 Dave Yarwood
+Copyright © 2015-2019 Dave Yarwood
 
 Distributed under the Eclipse Public License version 1.0.
 
