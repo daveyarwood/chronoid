@@ -64,11 +64,11 @@ For the following examples, we'll use [mantra](http://github.com/daveyarwood/man
 
 ```clojure
 (def bleep
-  (-> (c/set-timeout! clock bleep! 1000)
+  (-> (c/callback-at-time! clock bleep! 1000)
       (c/repeat! 2000)))
 
 (def bloop
-  (-> (c/set-timeout! clock bloop! 2000)
+  (-> (c/callback-at-time! clock bloop! 2000)
       (c/repeat! 2000)))
 
 ;; in 10 seconds, multiply the tempo by 2
