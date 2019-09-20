@@ -34,7 +34,7 @@ Chronoid is essentially a port of [WAAClock](https://github.com/sebpiq/WAAClock)
 ### Set events to repeat periodically
 
 ```clojure
-(-> (c/callback-at-time! clock #(js/console.log "wow!") 3000)
+(-> (c/set-timeout! clock #(js/console.log "wow!") 3000)
     (c/repeat! 2000))
 ```
 
@@ -64,11 +64,11 @@ For the following examples, we'll use [mantra](http://github.com/daveyarwood/man
 
 ```clojure
 (def bleep
-  (-> (c/callback-at-time! clock bleep! 1000)
+  (-> (c/set-timeout! clock bleep! 1000)
       (c/repeat! 2000)))
 
 (def bloop
-  (-> (c/callback-at-time! clock bloop! 2000)
+  (-> (c/set-timeout! clock bloop! 2000)
       (c/repeat! 2000)))
 
 ;; in 10 seconds, multiply the tempo by 2
