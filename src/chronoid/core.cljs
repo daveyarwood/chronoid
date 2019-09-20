@@ -1,17 +1,11 @@
 (ns chronoid.core)
 
-(def ^:dynamic *audio-context*
-  (let [ctx (or js/window.AudioContext
-                js/window.webkitAudioContext)]
-    (ctx.)))
-
 (def default-options
-  {:context *audio-context*
-   :tolerance-late  100 ; ms
+  {:tolerance-late  100 ; ms
    :tolerance-early 1}) ; ms
 
 (def ^:dynamic *clocks* {})
-
+(def audio-context (atom nil))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; For all of the public functions, the `clock` arguments are atom references to
@@ -20,10 +14,15 @@
 
 (defn clock
   [& {:as attrs}]
-  (let [id           (gensym "clock")
+  (let [ctx (if @audio-context @audio-context 
+              (let [ct (or js/window.AudioContext js/window.webkitAudioContext)
+                    inst (ct.)]
+                (reset! audio-context inst)))
+        id           (gensym "clock")
         clock        (merge default-options
                             attrs
-                            {:id      id
+                            {:context ctx 
+                             :id      id
                              :events  []
                              :started false})
         atomic-clock (atom clock)]
