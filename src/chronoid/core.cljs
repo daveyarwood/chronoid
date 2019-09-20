@@ -1,8 +1,7 @@
 (ns chronoid.core)
 
 (def default-options
-  {;:context *audio-context*
-   :tolerance-late  100 ; ms
+  {:tolerance-late  100 ; ms
    :tolerance-early 1}) ; ms
 
 (def ^:dynamic *clocks* {})
