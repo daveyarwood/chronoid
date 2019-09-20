@@ -119,12 +119,12 @@
 
 (defn- create-event!
   "Create an event and insert into a clock's event queue."
-  [clock f deadline & [{:as opts}]]
+  [clock-atom f deadline & [{:as opts}]]
   (let [event (event* (merge {:action   f
-                              :clock    clock
+                              :clock    clock-atom
                               :deadline deadline}
                              opts))]
-    (swap! clock update :events insert-event event)
+    (swap! clock-atom update :events insert-event event)
     event))
 
 (defn- schedule*
@@ -136,8 +136,8 @@
 (defn- schedule!
   "Schedule a copy of an event with a new deadline."
   [{:keys [clock-id] :as event} new-deadline]
-  (let [clock (get *clocks* clock-id)]
-    (swap! clock update :events schedule* event new-deadline)
+  (let [clock-atom (get *clocks* clock-id)]
+    (swap! clock-atom update :events schedule* event new-deadline)
     (event* (assoc event :deadline new-deadline))))
 
 (declare repeat!)
@@ -157,24 +157,24 @@
 
    `opts` may contain :tolerance-early and :tolerance-late for optionally
    overriding the clock's timing window for events."
-  [clock f delay & {:as opts}]
-  (create-event! clock f (absolute-time @clock delay) opts))
+  [clock-atom f delay & {:as opts}]
+  (create-event! clock-atom f (absolute-time @clock-atom delay) opts))
 
 (defn callback-at-time!
   "Schedules `f` to run before `deadline`. Returns the event.
 
    `opts` may contain :tolerance-early and :tolerance-late for optionally
    overriding the clock's timing window for events."
-  [clock f deadline & {:as opts}]
-  (create-event! clock f deadline opts))
+  [clock-atom f deadline & {:as opts}]
+  (create-event! clock-atom f deadline opts))
 
 (defn clear!
   "Unschedules an event by removing it from its clock's event queue."
   [{:keys [clock-id] :as event}]
-  (let [clock (get *clocks* clock-id)]
-    (swap! clock update :events #(filter (fn [{:keys [id]}]
-                                           (not= id (:id event)))
-                                         %))
+  (let [clock-atom (get *clocks* clock-id)]
+    (swap! clock-atom update :events #(filter (fn [{:keys [id]}]
+                                                (not= id (:id event)))
+                                              %))
     event))
 
 (defn repeat!
