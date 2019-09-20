@@ -5,7 +5,9 @@
    :tolerance-early 1}) ; ms
 
 (def ^:dynamic *clocks* {})
+
 (def audio-context (atom nil))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; For all of the public functions, the `clock` arguments are atom references to
@@ -14,14 +16,14 @@
 
 (defn clock
   [& {:as attrs}]
-  (let [ctx (if @audio-context @audio-context 
+  (let [ctx (if @audio-context @audio-context
               (let [ct (or js/window.AudioContext js/window.webkitAudioContext)
                     inst (ct.)]
                 (reset! audio-context inst)))
         id           (gensym "clock")
         clock        (merge default-options
                             attrs
-                            {:context ctx 
+                            {:context ctx
                              :id      id
                              :events  []
                              :started false})
@@ -212,13 +214,13 @@
    If `time-reference` is omitted, the default value is the current time of the
    event's clock."
   ([e ratio]
-    (let [{:keys [clock-id]} (if (sequential? e) (first e) e)
-          clock (get *clocks* clock-id)]
-      (time-stretch! e (current-time clock) ratio)))
+   (let [{:keys [clock-id]} (if (sequential? e) (first e) e)
+         clock (get *clocks* clock-id)]
+     (time-stretch! e (current-time clock) ratio)))
   ([e time-reference ratio]
-    (if (sequential? e)
-      (doall (map #(time-stretch!* % time-reference ratio) e))
-      (time-stretch!* e time-reference ratio))))
+   (if (sequential? e)
+     (doall (map #(time-stretch!* % time-reference ratio) e))
+     (time-stretch!* e time-reference ratio))))
 
 (defn start!
   "Remove all scheduled events and start the clock."
